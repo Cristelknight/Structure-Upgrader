@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "structure-upgrader",
+	"version": "${version}",
+	"name": "Structure Upgrader",
+	"description": "Safely bulk-upgrades Java Edition structure NBT files to Minecraft 1.21.1.",
+	"authors": [
+		"Cristelknight"
+	],
+	"license": "CC0-1.0",
+	"icon": "assets/structure-upgrader/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"de.cristelknight.structureupgrader.StructureUpgrader"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
