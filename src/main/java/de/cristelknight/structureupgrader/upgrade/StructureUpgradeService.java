@@ -21,7 +21,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
 
 public final class StructureUpgradeService {
 	public static final long MAX_EXPANDED_NBT_BYTES = 512L * 1024L * 1024L;
@@ -73,8 +75,10 @@ public final class StructureUpgradeService {
 		boolean cancelled = results.size() < files.size();
 		int upgraded = count(results, FileStatus.UPGRADED);
 		int wouldUpgrade = count(results, FileStatus.WOULD_UPGRADE);
+		int repaired = count(results, FileStatus.REPAIRED);
+		int wouldRepair = count(results, FileStatus.WOULD_REPAIR);
 		int failed = count(results, FileStatus.FAILED);
-		int skipped = results.size() - upgraded - wouldUpgrade - failed;
+		int skipped = results.size() - upgraded - wouldUpgrade - repaired - wouldRepair - failed;
 		UpgradeReport report = new UpgradeReport(
 			runId,
 			mode,
@@ -86,12 +90,15 @@ public final class StructureUpgradeService {
 			files.size(),
 			upgraded,
 			wouldUpgrade,
+			repaired,
+			wouldRepair,
 			skipped,
 			failed,
+			aggregateRepairs(results),
 			List.copyOf(results)
 		);
 
-		Path reportPath = mode == UpgradeMode.UPGRADE
+		Path reportPath = mode.writesFiles()
 			? runBackupDirectory.resolve("report.json")
 			: reportDirectory.resolve(runId + ".json");
 		writeReport(reportPath, report);
@@ -132,7 +139,6 @@ public final class StructureUpgradeService {
 
 	private FileResult process(Path file, UpgradeMode mode, Integer assumedDataVersion, Path runBackupDirectory) {
 		String relativePath = relativePath(file);
-		Path temporary = null;
 		Integer sourceDataVersion = null;
 
 		try {
@@ -142,11 +148,14 @@ public final class StructureUpgradeService {
 				return result(relativePath, FileStatus.NOT_A_STRUCTURE, null, "NBT root is not a structure template");
 			}
 
-			if (input.getInt("DataVersion").isPresent()) {
-				sourceDataVersion = input.getIntOr("DataVersion", 0);
-			} else if (assumedDataVersion != null) {
+			sourceDataVersion = input.getInt("DataVersion").orElse(null);
+			if (mode.isRepair()) {
+				return processRepair(relativePath, file, input, sourceDataVersion, mode, before, runBackupDirectory);
+			}
+
+			if (sourceDataVersion == null && assumedDataVersion != null) {
 				sourceDataVersion = assumedDataVersion;
-			} else {
+			} else if (sourceDataVersion == null) {
 				return result(relativePath, FileStatus.MISSING_VERSION, null, "Missing DataVersion");
 			}
 
@@ -156,24 +165,72 @@ public final class StructureUpgradeService {
 			if (sourceDataVersion == targetDataVersion) {
 				return result(relativePath, FileStatus.CURRENT, sourceDataVersion, "Already current");
 			}
-			if (mode == UpgradeMode.SCAN) {
+			if (mode.isDryRun()) {
 				return result(relativePath, FileStatus.WOULD_UPGRADE, sourceDataVersion, "Would be upgraded");
 			}
 
 			CompoundTag upgraded = DataFixTypes.STRUCTURE.updateToCurrentVersion(dataFixer, input, sourceDataVersion);
 			upgraded.putInt("DataVersion", targetDataVersion);
+			replace(file, upgraded, before, runBackupDirectory, verification -> {
+				if (!StructureNbtValidator.isStructure(verification)
+					|| verification.getIntOr("DataVersion", -1) != targetDataVersion) {
+					throw new IOException("Temporary output failed verification");
+				}
+			});
+			return result(relativePath, FileStatus.UPGRADED, sourceDataVersion, "Upgraded and backed up");
+		} catch (Exception exception) {
+			return result(relativePath, FileStatus.FAILED, sourceDataVersion, conciseMessage(exception));
+		}
+	}
 
-			temporary = Files.createTempFile(file.getParent(), "." + file.getFileName(), ".structure-upgrader.tmp");
-			NbtIo.writeCompressed(upgraded, temporary);
-			CompoundTag verification = read(temporary);
+	private FileResult processRepair(
+		String relativePath,
+		Path file,
+		CompoundTag input,
+		Integer sourceDataVersion,
+		UpgradeMode mode,
+		BasicFileAttributes before,
+		Path runBackupDirectory
+	) throws IOException {
+		CompoundTag repaired = input.copy();
+		List<RepairAction> actions = StructureRepairer.repair(repaired);
+		if (actions.isEmpty()) {
+			return result(relativePath, FileStatus.NO_REPAIRS, sourceDataVersion, "No known repairs needed");
+		}
+
+		int actionCount = actions.stream().mapToInt(RepairAction::count).sum();
+		if (mode.isDryRun()) {
+			return result(relativePath, FileStatus.WOULD_REPAIR, sourceDataVersion,
+				"Would apply " + actionCount + " repair action(s)", actions);
+		}
+
+		TagSnapshot dataVersion = TagSnapshot.capture(input, "DataVersion");
+		replace(file, repaired, before, runBackupDirectory, verification -> {
 			if (!StructureNbtValidator.isStructure(verification)
-				|| verification.getIntOr("DataVersion", -1) != targetDataVersion) {
-				throw new IOException("Temporary output failed verification");
+				|| !dataVersion.matches(verification, "DataVersion")
+				|| !StructureRepairer.repair(verification.copy()).isEmpty()) {
+				throw new IOException("Temporary repaired output failed verification");
 			}
+		});
+		return result(relativePath, FileStatus.REPAIRED, sourceDataVersion,
+			"Applied " + actionCount + " repair action(s) and backed up the original", actions);
+	}
+
+	private void replace(
+		Path file,
+		CompoundTag output,
+		BasicFileAttributes before,
+		Path runBackupDirectory,
+		OutputVerifier verifier
+	) throws IOException {
+		Path temporary = Files.createTempFile(file.getParent(), "." + file.getFileName(), ".structure-upgrader.tmp");
+		try {
+			NbtIo.writeCompressed(output, temporary);
+			verifier.verify(read(temporary));
 
 			BasicFileAttributes after = Files.readAttributes(file, BasicFileAttributes.class);
 			if (before.size() != after.size() || !before.lastModifiedTime().equals(after.lastModifiedTime())) {
-				throw new IOException("Source changed while it was being upgraded");
+				throw new IOException("Source changed while it was being processed");
 			}
 
 			Path backup = runBackupDirectory.resolve(serverDirectory.relativize(file));
@@ -184,18 +241,8 @@ public final class StructureUpgradeService {
 			} catch (AtomicMoveNotSupportedException exception) {
 				throw new IOException("Filesystem does not support atomic replacement", exception);
 			}
-			temporary = null;
-			return result(relativePath, FileStatus.UPGRADED, sourceDataVersion, "Upgraded and backed up");
-		} catch (Exception exception) {
-			return result(relativePath, FileStatus.FAILED, sourceDataVersion, conciseMessage(exception));
 		} finally {
-			if (temporary != null) {
-				try {
-					Files.deleteIfExists(temporary);
-				} catch (IOException ignored) {
-					// The original was never replaced. A stale temporary file is harmless and visible.
-				}
-			}
+			Files.deleteIfExists(temporary);
 		}
 	}
 
@@ -222,6 +269,10 @@ public final class StructureUpgradeService {
 		return new FileResult(path, status, sourceDataVersion, targetDataVersion, message);
 	}
 
+	private FileResult result(String path, FileStatus status, Integer sourceDataVersion, String message, List<RepairAction> repairs) {
+		return new FileResult(path, status, sourceDataVersion, targetDataVersion, message, repairs);
+	}
+
 	private String relativePath(Path file) {
 		try {
 			return serverDirectory.relativize(file).toString().replace('\\', '/');
@@ -232,6 +283,18 @@ public final class StructureUpgradeService {
 
 	private static int count(List<FileResult> results, FileStatus status) {
 		return (int) results.stream().filter(result -> result.status() == status).count();
+	}
+
+	private static List<RepairAction> aggregateRepairs(List<FileResult> results) {
+		Map<String, Integer> counts = new TreeMap<>();
+		for (FileResult result : results) {
+			for (RepairAction repair : result.repairs()) {
+				counts.merge(repair.ruleId(), repair.count(), Integer::sum);
+			}
+		}
+		return counts.entrySet().stream()
+			.map(entry -> new RepairAction(entry.getKey(), entry.getValue()))
+			.toList();
 	}
 
 	private static boolean isNbtFile(Path path) {
@@ -247,5 +310,22 @@ public final class StructureUpgradeService {
 		boolean isCancelled();
 
 		void onProgress(int processed, int total);
+	}
+
+	@FunctionalInterface
+	private interface OutputVerifier {
+		void verify(CompoundTag verification) throws IOException;
+	}
+
+	private record TagSnapshot(boolean present, net.minecraft.nbt.Tag value) {
+		private static TagSnapshot capture(CompoundTag tag, String key) {
+			net.minecraft.nbt.Tag value = tag.get(key);
+			return new TagSnapshot(value != null, value == null ? null : value.copy());
+		}
+
+		private boolean matches(CompoundTag tag, String key) {
+			net.minecraft.nbt.Tag candidate = tag.get(key);
+			return present == (candidate != null) && Objects.equals(value, candidate);
+		}
 	}
 }

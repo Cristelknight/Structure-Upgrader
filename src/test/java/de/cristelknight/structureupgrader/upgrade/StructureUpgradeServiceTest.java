@@ -19,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -126,6 +127,70 @@ class StructureUpgradeServiceTest {
 		assertEquals(2.4F, consumable.getFloatOr("consume_seconds", -1.0F));
 		assertEquals("minecraft:bowl", components.getCompoundOrEmpty("minecraft:use_remainder").getStringOr("id", ""));
 		assertEquals(DATA_VERSION_26_2, upgraded.getIntOr("DataVersion", -1));
+	}
+
+	@Test
+	void repairScanReportsActionsWithoutWritingOrBackingUp() throws IOException {
+		Path source = Files.createDirectories(serverDirectory.resolve("structures")).resolve("repairable.nbt");
+		CompoundTag structure = StructureRepairerTest.repairableStructure();
+		structure.putInt("DataVersion", DATA_VERSION_1_20_4);
+		NbtIo.writeCompressed(structure, source);
+		byte[] original = Files.readAllBytes(source);
+
+		StructureUpgradeService service = new StructureUpgradeService(noOpFixer(), DATA_VERSION_26_2, serverDirectory);
+		UpgradeRunResult result = service.run("repair-scan-run", UpgradeMode.REPAIR_SCAN, "structures", source.getParent(), null, NEVER_CANCELLED);
+
+		assertEquals(1, result.report().wouldRepair());
+		assertEquals(0, result.report().repaired());
+		assertEquals(List.of(
+			new RepairAction(StructureRepairer.FORGE_ENTITY_GRAVITY_RULE, 2),
+			new RepairAction(StructureRepairer.INVALID_STRUCTURE_ENTITY_RULE, 1)
+		), result.report().repairActions());
+		assertArrayEquals(original, Files.readAllBytes(source));
+		assertFalse(Files.exists(service.backupDirectory().resolve("repair-scan-run")));
+		assertTrue(Files.isRegularFile(result.reportPath()));
+	}
+
+	@Test
+	void repairApplyBacksUpPreservesVersionAndIsIdempotent() throws IOException {
+		Path source = Files.createDirectories(serverDirectory.resolve("structures")).resolve("repairable.nbt");
+		CompoundTag structure = StructureRepairerTest.repairableStructure();
+		structure.putInt("DataVersion", DATA_VERSION_1_20_4);
+		NbtIo.writeCompressed(structure, source);
+		byte[] original = Files.readAllBytes(source);
+
+		StructureUpgradeService service = new StructureUpgradeService(noOpFixer(), DATA_VERSION_26_2, serverDirectory);
+		UpgradeRunResult result = service.run("repair-run", UpgradeMode.REPAIR, "structures", source.getParent(), null, NEVER_CANCELLED);
+
+		assertEquals(1, result.report().repaired());
+		assertEquals(DATA_VERSION_1_20_4, read(source).getIntOr("DataVersion", -1));
+		Path backup = serverDirectory.resolve("config/structure-upgrader/backups/repair-run/structures/repairable.nbt");
+		assertArrayEquals(original, Files.readAllBytes(backup));
+		assertTrue(Files.isRegularFile(result.reportPath()));
+
+		UpgradeRunResult second = service.run("second-repair-run", UpgradeMode.REPAIR, "structures", source.getParent(), null, NEVER_CANCELLED);
+		assertEquals(0, second.report().repaired());
+		assertEquals(1, second.report().skipped());
+		assertEquals(FileStatus.NO_REPAIRS, second.report().files().getFirst().status());
+		assertFalse(Files.exists(service.backupDirectory().resolve("second-repair-run/structures/repairable.nbt")));
+	}
+
+	@Test
+	void repairsVersionlessAndFutureStructuresWithoutChangingTheirVersions() throws IOException {
+		Path directory = Files.createDirectories(serverDirectory.resolve("structures"));
+		Path versionless = directory.resolve("versionless.nbt");
+		Path future = directory.resolve("future.nbt");
+		NbtIo.writeCompressed(StructureRepairerTest.repairableStructure(), versionless);
+		CompoundTag futureStructure = StructureRepairerTest.repairableStructure();
+		futureStructure.putInt("DataVersion", DATA_VERSION_26_2 + 100);
+		NbtIo.writeCompressed(futureStructure, future);
+
+		StructureUpgradeService service = new StructureUpgradeService(noOpFixer(), DATA_VERSION_26_2, serverDirectory);
+		UpgradeRunResult result = service.run("mixed-version-repair", UpgradeMode.REPAIR, "structures", directory, null, NEVER_CANCELLED);
+
+		assertEquals(2, result.report().repaired());
+		assertFalse(read(versionless).contains("DataVersion"));
+		assertEquals(DATA_VERSION_26_2 + 100, read(future).getIntOr("DataVersion", -1));
 	}
 
 	private static CompoundTag legacyChestStructure() {

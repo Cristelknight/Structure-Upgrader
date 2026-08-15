@@ -57,7 +57,7 @@ public final class UpgradeCoordinator {
 		}
 
 		source.sendSuccess(
-			() -> Component.literal("Started " + mode.name().toLowerCase() + " job " + runId + " for " + target),
+			() -> Component.literal("Started " + displayName(mode) + " job " + runId + " for " + target),
 			false
 		);
 		return true;
@@ -70,7 +70,7 @@ public final class UpgradeCoordinator {
 			return;
 		}
 		source.sendSuccess(() -> Component.literal(
-			"Job " + job.runId + " (" + job.mode.name().toLowerCase() + ") processed "
+			"Job " + job.runId + " (" + displayName(job.mode) + ") processed "
 				+ job.processed + "/" + (job.total < 0 ? "?" : job.total)
 				+ (job.cancelled ? "; cancellation requested" : "")
 		), false);
@@ -127,6 +127,8 @@ public final class UpgradeCoordinator {
 				"Job " + job.runId + (report.cancelled() ? " cancelled" : " finished")
 					+ ": upgraded=" + report.upgraded()
 					+ ", wouldUpgrade=" + report.wouldUpgrade()
+					+ ", repaired=" + report.repaired()
+					+ ", wouldRepair=" + report.wouldRepair()
 					+ ", skipped=" + report.skipped()
 					+ ", failed=" + report.failed()
 					+ ". Report: " + result.reportPath()
@@ -155,6 +157,15 @@ public final class UpgradeCoordinator {
 
 	private static String conciseMessage(Exception exception) {
 		return exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
+	}
+
+	private static String displayName(UpgradeMode mode) {
+		return switch (mode) {
+			case SCAN -> "upgrade scan";
+			case UPGRADE -> "upgrade";
+			case REPAIR_SCAN -> "repair scan";
+			case REPAIR -> "repair";
+		};
 	}
 
 	private static final class RunningJob {

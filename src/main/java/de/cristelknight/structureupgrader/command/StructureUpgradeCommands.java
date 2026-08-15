@@ -30,6 +30,23 @@ public final class StructureUpgradeCommands {
 							) ? 1 : 0))))
 				.then(Commands.argument("path", StringArgumentType.greedyString())
 					.executes(context -> coordinator.start(UpgradeMode.UPGRADE, StringArgumentType.getString(context, "path"), null, context.getSource()) ? 1 : 0)))
+			.then(Commands.literal("repair")
+				.then(Commands.literal("scan")
+					.then(Commands.argument("path", StringArgumentType.greedyString())
+						.executes(context -> coordinator.start(
+							UpgradeMode.REPAIR_SCAN,
+							StringArgumentType.getString(context, "path"),
+							null,
+							context.getSource()
+						) ? 1 : 0)))
+				.then(Commands.literal("apply")
+					.then(Commands.argument("path", StringArgumentType.greedyString())
+						.executes(context -> coordinator.start(
+							UpgradeMode.REPAIR,
+							StringArgumentType.getString(context, "path"),
+							null,
+							context.getSource()
+						) ? 1 : 0))))
 			.then(Commands.literal("status")
 				.executes(context -> {
 					coordinator.status(context.getSource());

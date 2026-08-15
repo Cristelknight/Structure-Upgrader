@@ -13,8 +13,11 @@ public record UpgradeReport(
 	int discovered,
 	int upgraded,
 	int wouldUpgrade,
+	int repaired,
+	int wouldRepair,
 	int skipped,
 	int failed,
+	List<RepairAction> repairActions,
 	List<FileResult> files
 ) {
 }
