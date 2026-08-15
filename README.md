@@ -1,4 +1,4 @@
-# Structure Upgrader
+# Structure Upgrader | Warning: FULLY AI GENERATED!!!
 
 Structure Upgrader is a server-side Fabric mod for Minecraft Java Edition 1.21.1. It safely upgrades folders of compressed structure `.nbt` files with Mojang's own DataFixerUpper pipeline.
 
