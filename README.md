@@ -1,21 +1,21 @@
 # Structure Upgrader | Warning: FULLY AI GENERATED!!!
 
-Structure Upgrader is a server-side Fabric mod for Minecraft Java Edition 1.21.1. It safely upgrades folders of compressed structure `.nbt` files with Mojang's own DataFixerUpper pipeline.
+Structure Upgrader is a server-side Fabric mod for Minecraft Java Edition 26.2. It safely upgrades folders of compressed structure `.nbt` files with Mojang's own DataFixerUpper pipeline.
 
-This release upgrades older structures **to 1.21.1 only**. It includes migrations available in that version, such as the 1.20.5 item-stack component conversion. It does not include changes introduced after 1.21.1, and it will never downgrade a newer structure.
+This release upgrades older structures **to 26.2 only**. It includes Mojang's migrations through 26.2, including component changes introduced after 1.21.1, and it will never downgrade a newer structure.
 
 ## Requirements
 
-- Minecraft Java Edition 1.21.1
+- Minecraft Java Edition 26.2
 - Fabric Loader 0.19.3 or newer
 - Fabric API
-- Java 21
+- Java 25
 
 The mod is required only on the logical server. Install it on a dedicated server or the client hosting a single-player world.
 
 ## Commands
 
-Commands require permission level 4. Paths are relative to the game/server directory and may point to one `.nbt` file or a directory.
+Commands require the server-owner permission level. Paths are relative to the game/server directory and may point to one `.nbt` file or a directory.
 
 ```text
 /structureupgrader scan <path>

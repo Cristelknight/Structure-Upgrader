@@ -3,7 +3,7 @@
 	"id": "structure-upgrader",
 	"version": "${version}",
 	"name": "Structure Upgrader",
-	"description": "Safely bulk-upgrades Java Edition structure NBT files to Minecraft 1.21.1.",
+	"description": "Safely bulk-upgrades Java Edition structure NBT files to Minecraft 26.2.",
 	"authors": [
 		"Cristelknight"
 	],
@@ -17,8 +17,8 @@
 	},
 	"depends": {
 		"fabricloader": ">=0.19.3",
-		"minecraft": "~1.21.1",
-		"java": ">=21",
+		"minecraft": "~26.2",
+		"java": ">=25",
 		"fabric-api": "*"
 	}
 }

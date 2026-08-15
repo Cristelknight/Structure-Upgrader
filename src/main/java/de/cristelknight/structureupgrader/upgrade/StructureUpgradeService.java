@@ -6,7 +6,6 @@ import com.mojang.datafixers.DataFixer;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
-import net.minecraft.nbt.Tag;
 import net.minecraft.util.datafix.DataFixTypes;
 
 import java.io.IOException;
@@ -143,8 +142,8 @@ public final class StructureUpgradeService {
 				return result(relativePath, FileStatus.NOT_A_STRUCTURE, null, "NBT root is not a structure template");
 			}
 
-			if (input.contains("DataVersion", Tag.TAG_ANY_NUMERIC)) {
-				sourceDataVersion = input.getInt("DataVersion");
+			if (input.getInt("DataVersion").isPresent()) {
+				sourceDataVersion = input.getIntOr("DataVersion", 0);
 			} else if (assumedDataVersion != null) {
 				sourceDataVersion = assumedDataVersion;
 			} else {
@@ -168,7 +167,7 @@ public final class StructureUpgradeService {
 			NbtIo.writeCompressed(upgraded, temporary);
 			CompoundTag verification = read(temporary);
 			if (!StructureNbtValidator.isStructure(verification)
-				|| verification.getInt("DataVersion") != targetDataVersion) {
+				|| verification.getIntOr("DataVersion", -1) != targetDataVersion) {
 				throw new IOException("Temporary output failed verification");
 			}
 

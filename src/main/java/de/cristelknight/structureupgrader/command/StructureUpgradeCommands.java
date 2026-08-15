@@ -14,7 +14,7 @@ public final class StructureUpgradeCommands {
 
 	public static void register(CommandDispatcher<CommandSourceStack> dispatcher, UpgradeCoordinator coordinator) {
 		dispatcher.register(Commands.literal("structureupgrader")
-			.requires(source -> source.hasPermission(4))
+			.requires(Commands.hasPermission(Commands.LEVEL_OWNERS))
 			.then(Commands.literal("scan")
 				.then(Commands.argument("path", StringArgumentType.greedyString())
 					.executes(context -> coordinator.start(UpgradeMode.SCAN, StringArgumentType.getString(context, "path"), null, context.getSource()) ? 1 : 0)))

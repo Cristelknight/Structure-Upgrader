@@ -19,6 +19,6 @@ public class StructureUpgrader implements ModInitializer {
 			StructureUpgradeCommands.register(dispatcher, COORDINATOR)
 		);
 		ServerLifecycleEvents.SERVER_STOPPING.register(COORDINATOR::shutdown);
-		LOGGER.info("Structure Upgrader initialized for Minecraft 1.21.1");
+		LOGGER.info("Structure Upgrader initialized for Minecraft 26.2");
 	}
 }

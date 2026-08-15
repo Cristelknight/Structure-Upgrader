@@ -32,7 +32,7 @@ public final class UpgradeCoordinator {
 		try {
 			service = new StructureUpgradeService(
 				server.getFixerUpper(),
-				SharedConstants.getCurrentVersion().getDataVersion().getVersion(),
+				SharedConstants.getCurrentVersion().dataVersion().version(),
 				server.getServerDirectory()
 			);
 			target = SafePathResolver.resolve(server.getServerDirectory(), service.backupDirectory(), requestedPath);
